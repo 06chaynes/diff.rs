@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use flate2::bufread::GzDecoder;
+use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache};
+use reqwest_middleware::ClientBuilder;
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 use std::collections::{BTreeMap, BTreeSet};
@@ -70,7 +72,14 @@ impl CrateResponse {
     pub async fn fetch(name: &str) -> Result<Self> {
         let base: Url = "https://crates.io/api/v1/crates/".parse()?;
         let url = base.join(name)?;
-        let response = reqwest::get(url.as_str()).await?;
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(Cache(HttpCache {
+                mode: CacheMode::Default,
+                manager: CACacheManager::default(),
+                options: None,
+            }))
+            .build();
+        let response = client.get(url.as_str()).send().await?;
         if response.status().is_success() {
             Ok(response.json().await?)
         } else {
@@ -84,7 +93,14 @@ impl VersionInfo {
     pub async fn fetch(&self) -> Result<CrateSource> {
         let base: Url = "https://crates.io/".parse()?;
         let url = base.join(&self.dl_path)?;
-        let response = reqwest::get(url.as_str()).await?;
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(Cache(HttpCache {
+                mode: CacheMode::Default,
+                manager: CACacheManager::default(),
+                options: None,
+            }))
+            .build();
+        let response = client.get(url.as_str()).send().await?;
         if response.status().is_success() {
             let bytes = response.bytes().await?;
             let mut source = CrateSource::new(self.clone());
